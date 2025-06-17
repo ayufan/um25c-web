@@ -14,13 +14,14 @@
     canvas { background: white; border: 1px solid #ddd; margin-top: 1rem; }
     .status { margin-top: 1rem; font-weight: bold; }
     .hide { display: none; }
+    .disabled { display: none; }
   </style>
 </head>
 <body>
   <h2>UM25C Live Monitor (WebSerial + BLE)</h2>
   <p>
     <button id="connectBle" class="disconnected">Connect BLE</button>
-    <button id="connectSerial" style="display: none" class="disconnected">Connect WebSerial</button>
+    <button id="connectSerial" class="disconnected disabled">Connect WebSerial</button>
     <button id="disconnect" class="connected hide">Disconnect</button>
     <button id="toggleDetails" class="connected hide">Show Details</button>
     <button id="resetGraph" class="connected hide">Reset Graph</button>
