@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>UM25C Live Dashboard (WebSerial + BLE)</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 1rem; background: #f9f9f9; }
+    h2 { margin-top: 0; }
+    .data { display: grid; grid-template-columns: repeat(6, 1fr); gap: 1rem; margin-top: 1rem; }
+    .block { background: white; padding: 1rem; border: 1px solid #ccc; border-radius: 8px; }
+    .label { font-weight: bold; }
+    .value { font-size: 1.25rem; }
+    canvas { background: white; border: 1px solid #ddd; margin-top: 1rem; }
+    .status { margin-top: 1rem; font-weight: bold; }
+    .hide { display: none; }
+  </style>
+</head>
+<body>
+  <h2>UM25C Live Monitor (WebSerial + BLE)</h2>
+  <p>
+    <button id="connectBle" class="disconnected">Connect BLE</button>
+    <button id="connectSerial" style="display: none" class="disconnected">Connect WebSerial</button>
+    <button id="disconnect" class="connected hide">Disconnect</button>
+    <button id="toggleDetails" class="connected hide">Show Details</button>
+    <button id="resetGraph" class="connected hide">Reset Graph</button>
+
+    <button id="nextScreen" class="connected hide">Next Screen</button>
+    <button id="prevScreen" class="connected hide" style="display: none">Prev Screen</button>
+    <button id="rotateScreen" class="connected hide">Rotate Screen</button>
+    <button id="nextGroup" class="connected hide" style="display: none">Next Group</button>
+    <button id="clearGroup" class="connected hide">Clear Group</button>
+  </p>
+  <p>
+    <label class="connected hide">
+      <select id="groupSelect">
+        <option value="0">Group 0</option>
+        <option value="1">Group 1</option>
+        <option value="2">Group 2</option>
+        <option value="3">Group 3</option>
+        <option value="4">Group 4</option>
+        <option value="5">Group 5</option>
+        <option value="6">Group 6</option>
+        <option value="7">Group 7</option>
+        <option value="8">Group 8</option>
+        <option value="9">Group 9</option>
+      </select>
+    </label>
+
+    <label class="connected hide">
+      <select id="brightnessSelect">
+        <option value="0">0 (Dim)</option>
+        <option value="1">1 (Not-Dim)</option>
+        <option value="2">2 (Mid-Dim)</option>
+        <option value="3">3 (Mid-Bright)</option>
+        <option value="4">4 (Almost-Bright)</option>
+        <option value="5">5 (Bright)</option>
+      </select>
+    </label>
+
+    <label class="connected hide">
+      <select id="timeoutSelect">
+        <option value="0">0 (No Timeout)</option>
+        <option value="1">1 min</option>
+        <option value="2">2 min</option>
+        <option value="3">3 min</option>
+        <option value="4">4 min</option>
+        <option value="5">5 min</option>
+        <option value="6">6 min</option>
+        <option value="7">7 min</option>
+        <option value="8">8 min</option>
+        <option value="9">9 min</option>
+      </select>
+    </label>
+
+    <label class="connected hide">
+      <select id="recordingThreshold">
+        <option value="0">Rec. &gt;= 0 mA</option>
+        <option value="10">Rec. &gt;= 10 mA</option>
+        <option value="20">Rec. &gt;= 20 mA</option>
+        <option value="30">Rec. &gt;= 30 mA</option>
+        <option value="40">Rec. &gt;= 40 mA</option>
+        <option value="50">Rec. &gt;= 50 mA</option>
+        <option value="60">Rec. &gt;= 60 mA</option>
+        <option value="70">Rec. &gt;= 70 mA</option>
+        <option value="80">Rec. &gt;= 80 mA</option>
+        <option value="90">Rec. &gt;= 90 mA</option>
+        <option value="100">Rec. &gt;= 100 mA</option>
+        <option value="110">Rec. &gt;= 110 mA</option>
+        <option value="120">Rec. &gt;= 120 mA</option>
+        <option value="130">Rec. &gt;= 130 mA</option>
+        <option value="140">Rec. &gt;= 140 mA</option>
+        <option value="150">Rec. &gt;= 150 mA</option>
+        <option value="160">Rec. &gt;= 160 mA</option>
+        <option value="170">Rec. &gt;= 170 mA</option>
+        <option value="180">Rec. &gt;= 180 mA</option>
+        <option value="190">Rec. &gt;= 190 mA</option>
+        <option value="200">Rec. &gt;= 200 mA</option>
+        <option value="210">Rec. &gt;= 210 mA</option>
+        <option value="220">Rec. &gt;= 220 mA</option>
+        <option value="230">Rec. &gt;= 230 mA</option>
+        <option value="240">Rec. &gt;= 240 mA</option>
+        <option value="250">Rec. &gt;= 250 mA</option>
+        <option value="260">Rec. &gt;= 260 mA</option>
+        <option value="270">Rec. &gt;= 270 mA</option>
+        <option value="280">Rec. &gt;= 280 mA</option>
+        <option value="290">Rec. &gt;= 290 mA</option>
+        <option value="300">Rec. &gt;= 300 mA</option>
+      </select>
+    </label>
+  </p>
+
+  <div id="connectionStatus" class="status">Device: Disconnected</div>
+  <div id="basicData" class="data"></div>
+  <div id="detailsData" class="data hide details"></div>
+  <div id="recordingData" class="data hide details"></div>
+  <div id="chartContainer" style="flex: 1 1 auto; display: flex;">
+    <canvas id="chart" width="900" height="400"></canvas>
+  </div>
+
+  <footer style="margin-top: 2em; font-size: 0.9em; color: #666; text-align: center;">
+    <div>
+      Kamil Trzciński (c) 2025 | 
+      <a href="https://github.com/ayufan/um25c-web" target="_blank" rel="noopener noreferrer">GitHub</a> |
+      <a href="https://ko-fi.com/ayufan" target="_blank" rel="noopener noreferrer">Buy a Coffee</a>
+    </div>
+  </footer>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const dataEl = document.getElementById("data");
+  const connectionStatusEl = document.getElementById("connectionStatus");
+  const connectSerialBtn = document.getElementById("connectSerial");
+  const connectBleBtn = document.getElementById("connectBle");
+  const disconnectBtn = document.getElementById("disconnect");
+  const toggleDetailsBtn = document.getElementById("toggleDetails");
+  const resetGraphBtn = document.getElementById("resetGraph");
+  const brightnessSelect = document.getElementById("brightnessSelect");
+  const timeoutSelect = document.getElementById("timeoutSelect");
+  const groupSelect = document.getElementById("groupSelect");
+  const recordingThreshold = document.getElementById("recordingThreshold");
+
+  let labels = [], volts = [], amps = [], watts = [], temps = [];
+  let commandSend = false;
+
+  const ctx = document.getElementById("chart").getContext("2d");
+  const chart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "Voltage (V)", borderColor: "blue", data: volts, fill: false },
+        { label: "Current (A)", borderColor: "red", data: amps, fill: false },
+        { label: "Power (W)", borderColor: "green", data: watts, fill: false },
+        { label: "Temp (°C)", borderColor: "orange", data: temps, fill: false, hidden: true }
+      ]
+    },
+    options: {
+      animation: false,
+      maintainAspectRatio: false,
+      scales: { x: { display: true }, y: { beginAtZero: true } }
+    }
+  });
+
+  // Device markers config
+  const DEVICE_MARKERS = {
+    UM24C: { header: [0x09, 0x63], footer: [0xff, 0xf1], multiplier: 1 },
+    UM25C: { header: [0x09, 0x63], footer: [0xff, 0xf1], multiplier: 10 },
+    UM25C_BLE: { header: [0x09, 0xc9], footer: [0xff, 0xf1], multiplier: 10 },
+    UM34C: { header: [0x0d, 0x4c], footer: [0x80, 0x68], multiplier: 1 }
+  };
+
+  const CHARGING_MODES = {
+    0: "Unknown",
+    1: "QC2.0",
+    2: "QC3.0",
+    3: "APP2.4A",
+    4: "APP2.1A",
+    5: "APP1.0A",
+    6: "DCP1.5A",
+    7: "APP2.4A",
+    8: "Samsung"
+  };
+
+  const INTERVAL = 1000;
+  const MAX_LABELS = 1000;
+
+  function matchesHeaderFooter(data, header, footer) {
+    return (
+      data.getUint8(0) === header[0] &&
+      data.getUint8(1) === header[1] &&
+      data.getUint8(128) === footer[0] &&
+      data.getUint8(129) === footer[1]
+    );
+  }
+
+  function parseUM25CPacket(buffer) {
+    if (buffer.byteLength < 130) throw new Error("Invalid data length");
+
+    const data = new DataView(buffer);
+
+    let deviceType = null;
+    let multiplier = 1;
+
+    for (const [type, markers] of Object.entries(DEVICE_MARKERS)) {
+      if (matchesHeaderFooter(data, markers.header, markers.footer)) {
+        deviceType = type;
+        multiplier = markers.multiplier;
+        break;
+      }
+    }
+    if (!deviceType) throw new Error("Unknown device");
+
+    const u8 = (off) => data.getUint8(off);
+    const u16 = (off) => data.getUint16(off, false);
+    const i16 = (off) => data.getInt16(off, false);
+    const u32 = (off) => data.getUint32(off, false);
+
+    const dataGroups = {};
+    for (let i = 0; i < 10; i++) {
+      const pos = 16 + i * 8;
+      dataGroups[`${i}`] = {
+        milliAmpHours: u32(pos),
+        milliWattHours: u32(pos+4),
+      };
+    }
+
+    return {
+      device: deviceType,
+      volts: u16(2) / (100 * multiplier),
+      amps: i16(4) / (1000 * multiplier),
+      watts: u32(6) / 1000,
+      tempC: u16(10),
+      tempF: u16(12),
+      currentDataGroup: u16(14),
+      dataGroups: dataGroups,
+      usbDataPlusVolts: u16(96) / 100,
+      usbDataMinusVolts: u16(98) / 100,
+      chargeMode: CHARGING_MODES[`${u16(100)}`] ?? "Unknown",
+      internalResistance_mOhm: u32(122) / 10,
+      screenTimeout: u16(118),
+      screenBacklight: u16(120),
+      currentScreen: u16(126),
+      recMilliAmpHours: u32(102),
+      recMilliWattHours: u32(106),
+      recThreshMilliAmps: u16(110) * 10,
+      recSeconds: u32(112),
+      recActive: u16(116),
+    };
+  }
+
+  function updateUI(parsed) {
+    function populate(container, data) {
+      for (const [label, value] of Object.entries(data)) {
+        let block = container.querySelector(`.block[data-key="${label}"]`);
+        if (!block) {
+          block = document.createElement("div");
+          block.setAttribute("data-key", label);
+          block.className = "block";
+          block.innerHTML = `<span class="label">${label}:</span> <div class="value"></div>`;
+          container.appendChild(block);
+        }
+
+        const valueSpan = block.querySelector(".value");
+        if (valueSpan) valueSpan.textContent = value;
+      }
+    }
+
+    // Safe formatter that guards against null, undefined, or NaN
+    function safe(value, decimals = null) {
+      if (value === null || value === undefined || isNaN(value)) return "—";
+      return decimals !== null ? Number(value).toFixed(decimals) : value;
+    }
+
+    const basicData = {
+      "Voltage (V)": safe(parsed.volts, 3),
+      "Current (A)": safe(parsed.amps, 4),
+      "Power (W)": safe(parsed.watts, 3),
+      "Temperature (°C)": safe(parsed.tempC, 0),
+      "Group (mAh)": safe(parsed.dataGroups?.[parsed.currentDataGroup]?.milliAmpHours),
+      "Group (mWh)": safe(parsed.dataGroups?.[parsed.currentDataGroup]?.milliWattHours),
+    };
+
+    const detailedData = {
+      "Device": parsed.device ?? "—",
+      // "Temperature (°F)": safe(parsed.tempF, 0),
+      // "Data Group": safe(parsed.currentDataGroup),
+      "Charge Mode": parsed.chargeMode ?? "—",
+      "USB D+ (V)": safe(parsed.usbDataPlusVolts, 2),
+      "USB D- (V)": safe(parsed.usbDataMinusVolts, 2),
+      "Int. Resistance (Ω)": safe(parsed.internalResistance_mOhm, 1),
+      // "Current Screen": parsed.currentScreen ?? "—"
+    };
+
+    const recordingData = {
+      "Recording": parsed.recActive ? "Yes" : "No",
+      "Rec. (mAh)": parsed.recMilliAmpHours,
+      "Rec. (mWh)": parsed.recMilliWattHours,
+      "Rec. Thresh. (mA)": parsed.recThreshMilliAmps,
+      "Rec. Duration (s)": parsed.recSeconds,
+    };
+
+    timeoutSelect.value = parsed.screenTimeout;
+    brightnessSelect.value = parsed.screenBacklight;
+    groupSelect.value = parsed.currentDataGroup;
+    recordingThreshold.value = parsed.recThreshMilliAmps;
+
+    populate(document.getElementById("basicData"), basicData);
+    populate(document.getElementById("detailsData"), detailedData);
+    populate(document.getElementById("recordingData"), recordingData);
+  }
+
+  function updateChart(time, parsed) {
+    if (parsed) {
+      if (labels.length > MAX_LABELS) {
+        labels.shift();
+        volts.shift();
+        amps.shift();
+        watts.shift();
+        temps.shift();
+      }
+      labels.push(time);
+      volts.push(parsed.volts);
+      amps.push(parsed.amps);
+      watts.push(parsed.watts);
+      temps.push(parsed.tempC);
+    } else {
+      labels.length = 0;
+      volts.length = 0;
+      amps.length = 0;
+      watts.length = 0;
+      temps.length = 0;
+    }
+    chart.update();
+  }
+
+  function updateConnectionStatus(connected, deviceName = "") {
+    connectionStatusEl.textContent = connected
+      ? `Device: Connected (${deviceName || "Unknown"})`
+      : "Device: Disconnected";
+
+    document.querySelectorAll(".connected").forEach(el => {
+      el.classList.toggle("hide", !connected);
+    });
+
+    document.querySelectorAll(".disconnected").forEach(el => {
+      el.classList.toggle("hide", connected);
+    });
+  }
+
+  toggleDetailsBtn.addEventListener("click", () => {
+    document.querySelectorAll(".details").forEach(el => {
+      let isHidden = el.classList.contains('hide');
+      el.classList.toggle("hide", !isHidden);
+      toggleDetailsBtn.textContent = isHidden ? "Hide Details" : "Show Details";
+    });
+  });
+
+  resetGraphBtn.addEventListener("click", () => {
+    updateChart(null, false);
+  });
+
+  brightnessSelect.addEventListener("change", () => {
+    const brightness = parseInt(brightnessSelect.value, 10);
+    if (brightness >= 0 && brightness <= 5) {
+      const command = 0xd0 + brightness;
+      sendCommand(command);
+    }
+  });
+
+  timeoutSelect.addEventListener("change", () => {
+    const timeout = parseInt(timeoutSelect.value, 10);
+    if (timeout >= 0 && timeout <= 9) {
+      const command = 0xe0 + timeout;
+      sendCommand(command);
+    }
+  });
+
+  groupSelect.addEventListener("change", () => {
+    const timeout = parseInt(groupSelect.value, 10);
+    if (timeout >= 0 && timeout <= 9) {
+      const command = 0xa0 + timeout;
+      sendCommand(command);
+    }
+  });
+
+  document.getElementById("nextScreen").addEventListener("click", () => {
+    sendCommand(0xf1);
+  });
+
+  document.getElementById("prevScreen").addEventListener("click", () => {
+    sendCommand(0xf3);
+  });
+
+  document.getElementById("rotateScreen").addEventListener("click", () => {
+    sendCommand(0xf2);
+  });
+
+  document.getElementById("nextGroup").addEventListener("click", () => {
+    sendCommand(0xf3);
+  });
+
+  document.getElementById("clearGroup").addEventListener("click", () => {
+    sendCommand(0xf4);
+  });
+
+  document.getElementById("recordingThreshold").addEventListener("change", () => {
+    const input = document.getElementById("recordingThreshold");
+    const value = Math.max(0, Math.min(300, input.value)) / 10;
+    const commandByte = 0xb0 + value;
+    sendCommand(commandByte);
+  });
+
+  // Generic function to send a 1-byte command over BLE or serial
+  function sendCommand(byte) {
+    const buffer = Uint8Array.of(byte);
+    if (bleCharacteristic) {
+      bleCharacteristic.writeValue(buffer).catch(() => {});
+    } else if (serialWriter) {
+      serialWriter.write(buffer).catch(() => {});
+    }
+    commandSend = true;
+  }
+
+  // ===== WEB SERIAL =====
+  let serialPort, serialWriter, serialReader, serialInterval;
+
+  connectSerialBtn.onclick = async () => {
+    try {
+      serialPort = await navigator.serial.requestPort();
+      await serialPort.open({ baudRate: 9600 });
+      serialWriter = serialPort.writable.getWriter();
+      serialReader = serialPort.readable.getReader();
+
+      updateConnectionStatus(true, "Serial");
+
+      serialInterval = setInterval(() => {
+        serialWriter.write(Uint8Array.of(0xf0));
+        commandSend = false;
+      }, 500);
+
+      while (true) {
+        const { value, done } = await serialReader.read();
+        if (done) break;
+        if (!value) continue;
+        if (value.length < 130) continue;
+
+        try {
+          const parsed = parseUM25CPacket(value.slice(0,130).buffer);
+          const now = new Date().toLocaleTimeString();
+          updateUI(parsed);
+          updateChart(now, parsed);
+        } catch (e) {
+          // Ignore bad packets
+        }
+      }
+
+      updateConnectionStatus(false);
+    } catch (e) {
+      alert("Serial error: " + e.message);
+      updateConnectionStatus(false);
+    }
+  };
+
+  // ===== BLUETOOTH LE =====
+
+  const UM25C_SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
+  const UM25C_CHARACTERISTIC_UUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
+
+  let bleDevice, bleServer, bleService, bleCharacteristic;
+  let bleInterval;
+
+  connectBleBtn.onclick = async () => {
+    try {
+      bleDevice = await navigator.bluetooth.requestDevice({
+        filters: [{ namePrefix: "UM" }],
+        optionalServices: [UM25C_SERVICE_UUID]
+      });
+      bleServer = await bleDevice.gatt.connect();
+      bleService = await bleServer.getPrimaryService(UM25C_SERVICE_UUID);
+      bleCharacteristic = await bleService.getCharacteristic(UM25C_CHARACTERISTIC_UUID);
+
+      updateConnectionStatus(true, bleDevice.name);
+
+      let packetBuffer = new Uint8Array();
+
+      await bleCharacteristic.startNotifications();
+
+      bleCharacteristic.addEventListener('characteristicvaluechanged', event => {
+        const incoming = new Uint8Array(event.target.value.buffer);
+        packetBuffer = concatUint8Arrays(packetBuffer, incoming);
+        if (packetBuffer.length < 130) return;
+
+        try {
+          const parsed = parseUM25CPacket(packetBuffer.slice(0,130).buffer);
+          const now = new Date().toLocaleTimeString();
+          updateUI(parsed);
+          updateChart(now, parsed);
+        } catch (e) {
+          console.log(`BLE Packet Exception: ${e} =>`, packetBuffer);
+        }
+
+        packetBuffer = new Uint8Array();
+      });
+
+      function concatUint8Arrays(a, b) {
+        const c = new Uint8Array(a.length + b.length);
+        c.set(a, 0);
+        c.set(b, a.length);
+        return c;
+      }
+
+      bleInterval = setInterval(() => {
+        bleCharacteristic.writeValue(Uint8Array.of(0xf0)).catch(() => {});
+        commandSend = false;
+      }, INTERVAL);
+
+      bleDevice.addEventListener('gattserverdisconnected', () => {
+        clearInterval(bleInterval);
+        updateConnectionStatus(false);
+        alert('BLE device disconnected');
+      });
+
+    } catch (e) {
+      alert("BLE error: " + e.message);
+      updateConnectionStatus(false);
+    }
+  };
+
+  // ===== DISCONNECT =====
+
+  disconnectBtn.onclick = async () => {
+    try {
+      if (serialPort) {
+        clearInterval(serialInterval);
+        serialReader?.releaseLock();
+        serialWriter?.releaseLock();
+        await serialPort.close();
+        serialPort = null;
+      }
+      if (bleDevice && bleDevice.gatt.connected) {
+        clearInterval(bleInterval);
+        await bleDevice.gatt.disconnect();
+        bleDevice = null;
+      }
+    } catch (e) {
+      alert("Disconnect error: " + e.message);
+    }
+  };
+</script>
+</body>
+</html>
