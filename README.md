@@ -6,6 +6,12 @@ It directly replaces the https://github.com/kolinger/rd-usb.
 
 It just requires browser, and is single HTML. Access it via https://um25c.ayufan.dev/.
 
+## Tested on
+
+- Android 15/16
+- iOS via Bluefy
+- Chrome MacOS
+
 ## iOS/iPadOS
 
 To use it on iOS/iPadOS you need to install BLE enabled web-browser, like: [Bluefy](https://apps.apple.com/pl/app/bluefy-web-ble-browser/id1492822055?l=pl).
