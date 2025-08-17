@@ -116,11 +116,11 @@
 
     <label class="connected hide">
       <select id="timeRange">
-        <option value="60">Last minute</option>
+        <option value="60" selected>Last minute</option>
         <option value="300">Last 5 minutes</option>
         <option value="900">Last 15 minutes</option>
         <option value="3600">Last 1 hour</option>
-        <option value="0" selected>All data</option>
+        <option value="0">All data</option>
       </select>
     </label>
 
@@ -296,6 +296,10 @@
     return Math.floor(ts1 / 1000) === Math.floor(ts2 / 1000);
   }
 
+  function floorToSecond(ts) {
+    return Math.floor(ts / 1000) * 1000;
+  }
+
   function updateUI(parsed) {
     function populate(container, data) {
       for (const [label, value] of Object.entries(data)) {
@@ -382,7 +386,7 @@
       recMah.shift();
       recMwh.shift();
     }
-    timestamps.push(parsed.ts);
+    timestamps.push(floorToSecond(parsed.ts));
     volts.push(parsed.volts);
     amps.push(parsed.amps);
     watts.push(parsed.watts);
@@ -489,12 +493,15 @@
       return;
     }
 
-    const headers = ['Time', 'Voltage (V)', 'Current (A)', 'Power (W)', 'Temperature (°C)', 'Rec mAh', 'Rec mWh'];
+    const headers = ['Date', 'Time', 'Voltage (V)', 'Current (A)', 'Power (W)', 'Temperature (°C)', 'Rec mAh', 'Rec mWh'];
     const rows = [headers.join(',')];
 
     for (let i = 0; i < timestamps.length; i++) {
-      const timeStr = new Date(timestamps[i]).toLocaleString();
+      const date = new Date(timestamps[i]);
+      const dateStr = date.toLocaleDateString();
+      const timeStr = date.toLocaleTimeString();
       const row = [
+        dateStr,
         timeStr,
         volts[i] || 0,
         amps[i] || 0,
