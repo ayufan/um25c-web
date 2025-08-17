@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <title>UM25C Live Dashboard (WebSerial + BLE)</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
   <style>
     body { font-family: sans-serif; padding: 1rem; background: #f9f9f9; }
     h2 { margin-top: 0; }
@@ -118,8 +119,8 @@
         <option value="60">Last minute</option>
         <option value="300">Last 5 minutes</option>
         <option value="900">Last 15 minutes</option>
-        <option value="3600" selected>Last 1 hour</option>
-        <option value="0">All data</option>
+        <option value="3600">Last 1 hour</option>
+        <option value="0" selected>All data</option>
       </select>
     </label>
 
@@ -146,7 +147,6 @@
       <a href="https://ko-fi.com/ayufan" target="_blank" rel="noopener noreferrer">Buy a Coffee</a>
     </div>
   </footer>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
   const dataEl = document.getElementById("data");
   const connectionStatusEl = document.getElementById("connectionStatus");
@@ -165,7 +165,7 @@
   const loadDataBtn = document.getElementById("loadData");
   const exportCsvBtn = document.getElementById("exportCsv");
 
-  let labels = [], volts = [], amps = [], watts = [], temps = [];
+  let volts = [], amps = [], watts = [], temps = [];
   let recMah = [], recMwh = [];
   let timestamps = [];
   let commandSend = false;
@@ -175,7 +175,7 @@
   const chart = new Chart(ctx, {
     type: "line",
     data: {
-      labels,
+      labels: timestamps,
       datasets: [
         { label: "Voltage (V)", borderColor: "blue", data: volts, fill: false },
         { label: "Current (A)", borderColor: "red", data: amps, fill: false },
@@ -187,7 +187,18 @@
       animation: false,
       maintainAspectRatio: false,
       scales: { 
-        x: { display: true }, 
+        x: { 
+          type: 'time',
+          time: {
+            unit: 'second',
+            displayFormats: {
+              second: 'HH:mm:ss',
+              minute: 'HH:mm:ss',
+              hour: 'HH:mm:ss'
+            }
+          },
+          display: true 
+        }, 
         y: { beginAtZero: true }
       }
     }
@@ -257,6 +268,7 @@
     }
 
     return {
+      ts: Date.now(),
       device: deviceType,
       volts: u16(2) / (100 * multiplier),
       amps: i16(4) / (1000 * multiplier),
@@ -278,6 +290,10 @@
       recSeconds: u32(112),
       recActive: u16(116),
     };
+  }
+
+  function theSameSecond(ts1, ts2) {
+    return Math.floor(ts1 / 1000) === Math.floor(ts2 / 1000);
   }
 
   function updateUI(parsed) {
@@ -341,59 +357,68 @@
     populate(document.getElementById("recordingData"), recordingData);
   }
 
-  function updateChart(time, parsed) {
-    if (parsed) {
-      const now = Date.now();
-      if (labels.length > MAX_LABELS) {
-        labels.shift();
-        volts.shift();
-        amps.shift();
-        watts.shift();
-        temps.shift();
-        recMah.shift();
-        recMwh.shift();
-        timestamps.shift();
-      }
-      labels.push(time);
-      volts.push(parsed.volts);
-      amps.push(parsed.amps);
-      watts.push(parsed.watts);
-      temps.push(parsed.tempC);
-      recMah.push(parsed.recMilliAmpHours);
-      recMwh.push(parsed.recMilliWattHours);
-      timestamps.push(now);
-    } else {
-      labels.length = 0;
-      volts.length = 0;
-      amps.length = 0;
-      watts.length = 0;
-      temps.length = 0;
-      recMah.length = 0;
-      recMwh.length = 0;
-      timestamps.length = 0;
-    }
-
-    filterDataByTimeRange();
+  function resetChart() {
+    timestamps.length = 0;
+    volts.length = 0;
+    amps.length = 0;
+    watts.length = 0;
+    temps.length = 0;
+    recMah.length = 0;
+    recMwh.length = 0;
+    updateXScale();
     chart.update();
   }
 
-  function filterDataByTimeRange() {
-    chart.options.scales.x.min = 0;
-    chart.options.scales.x.max = labels.length;
-
-    const timeRange = parseInt(timeRangeSelect.value);
-    if (timeRange === 0) {
+  function updateChart(parsed) {
+    if (timestamps.length > 0 && theSameSecond(timestamps[0], parsed.ts)) {
       return;
     }
+    if (timestamps.length > MAX_LABELS) {
+      timestamps.shift();
+      volts.shift();
+      amps.shift();
+      watts.shift();
+      temps.shift();
+      recMah.shift();
+      recMwh.shift();
+    }
+    timestamps.push(parsed.ts);
+    volts.push(parsed.volts);
+    amps.push(parsed.amps);
+    watts.push(parsed.watts);
+    temps.push(parsed.tempC);
+    recMah.push(parsed.recMilliAmpHours);
+    recMwh.push(parsed.recMilliWattHours);
 
-    const cutoffTime = Date.now() - (timeRange * 1000);
+    updateXScale();
+    chart.update();
+  }
 
-    // Find the first index that should be included
-    for (let i = 0; i < timestamps.length; i++) {
-      if (timestamps[i] >= cutoffTime) {
-        chart.options.scales.x.min = i;
-        break;
+  function updateXScale() {
+    const timeRange = parseInt(timeRangeSelect.value);
+    const now = Date.now();
+    const cutoffTime = now - (timeRange * 1000);
+
+    chart.options.scales.x.min = cutoffTime;
+    chart.options.scales.x.max = undefined;
+    
+    // Adjust time unit and step size based on range
+    if (timeRange == 0) {
+      if (timestamps.length > 0) {
+        chart.options.scales.x.min = timestamps[0];
       }
+    } else if (timeRange <= 60) { // 1 minute
+      chart.options.scales.x.time.unit = 'second';
+      chart.options.scales.x.time.unitStepSize = 1;
+    } else if (timeRange <= 300) { // 5 minutes
+      chart.options.scales.x.time.unit = 'second';
+      chart.options.scales.x.time.unitStepSize = 5;
+    } else if (timeRange <= 900) { // 15 minutes
+      chart.options.scales.x.time.unit = 'second';
+      chart.options.scales.x.time.unitStepSize = 15;
+    } else { // 1 hour or more
+      chart.options.scales.x.time.unit = 'minute';
+      chart.options.scales.x.time.unitStepSize = 5;
     }
   }
 
@@ -410,7 +435,6 @@
 
   function saveDataToLocalStorage() {
     const data = {
-      labels,
       volts,
       amps,
       watts,
@@ -433,7 +457,6 @@
 
     try {
       const data = JSON.parse(saved);
-      labels.length = 0;
       volts.length = 0;
       amps.length = 0;
       watts.length = 0;
@@ -442,7 +465,6 @@
       recMwh.length = 0;
       timestamps.length = 0;
 
-      labels.push(...data.labels);
       volts.push(...data.volts);
       amps.push(...data.amps);
       watts.push(...data.watts);
@@ -451,7 +473,7 @@
       recMwh.push(...(data.recMwh || []));
       timestamps.push(...(data.timestamps || []));
 
-      filterDataByTimeRange();
+      updateXScale();
       chart.update();
 
       const savedDate = new Date(data.savedAt).toLocaleString();
@@ -462,7 +484,7 @@
   }
 
   function exportToCsv() {
-    if (labels.length === 0) {
+    if (timestamps.length === 0) {
       alert('No data to export');
       return;
     }
@@ -470,9 +492,10 @@
     const headers = ['Time', 'Voltage (V)', 'Current (A)', 'Power (W)', 'Temperature (°C)', 'Rec mAh', 'Rec mWh'];
     const rows = [headers.join(',')];
 
-    for (let i = 0; i < labels.length; i++) {
+    for (let i = 0; i < timestamps.length; i++) {
+      const timeStr = new Date(timestamps[i]).toLocaleString();
       const row = [
-        labels[i],
+        timeStr,
         volts[i] || 0,
         amps[i] || 0,
         watts[i] || 0,
@@ -519,11 +542,11 @@
   });
 
   resetGraphBtn.addEventListener("click", () => {
-    updateChart(null, false);
+    resetChart();
   });
 
   timeRangeSelect.addEventListener("change", () => {
-    filterDataByTimeRange();
+    updateXScale();
     chart.update();
   });
 
@@ -612,9 +635,6 @@
 
       serialInterval = setInterval(() => {
         const now = Date.now();
-        if (now - lastDataReceived < INTERVAL * 9 / 10) {
-          return;
-        }
         serialWriter.write(Uint8Array.of(0xf0));
         commandSend = false;
       }, INTERVAL);
@@ -627,10 +647,8 @@
 
         try {
           const parsed = parseUM25CPacket(value.slice(0,130).buffer);
-          const now = new Date().toLocaleTimeString();
-          lastDataReceived = Date.now();
           updateUI(parsed);
-          updateChart(now, parsed);
+          updateChart(parsed);
         } catch (e) {
           // Ignore bad packets
         }
@@ -674,10 +692,8 @@
 
         try {
           const parsed = parseUM25CPacket(packetBuffer.slice(0,130).buffer);
-          const now = new Date().toLocaleTimeString();
-          lastDataReceived = Date.now();
           updateUI(parsed);
-          updateChart(now, parsed);
+          updateChart(parsed);
         } catch (e) {
           console.log(`BLE Packet Exception: ${e} =>`, packetBuffer);
         }
@@ -693,10 +709,6 @@
       }
 
       bleInterval = setInterval(() => {
-        const now = Date.now();
-        if (now - lastDataReceived < INTERVAL * 9 / 10) {
-          return;
-        }
         bleCharacteristic.writeValue(Uint8Array.of(0xf0)).catch(() => {});
         commandSend = false;
       }, INTERVAL);
