@@ -121,6 +121,13 @@
         <option value="0">All data</option>
       </select>
     </label>
+
+    <label class="connected hide">
+      <select id="yScaleMode">
+        <option value="zero" selected>Y Scale: 0 to Max</option>
+        <option value="minmax">Y Scale: Min to Max</option>
+      </select>
+    </label>
   </p>
 
   <div id="connectionStatus" class="status">Device: Disconnected</div>
@@ -152,6 +159,7 @@
   const groupSelect = document.getElementById("groupSelect");
   const recordingThreshold = document.getElementById("recordingThreshold");
   const timeRangeSelect = document.getElementById("timeRange");
+  const yScaleModeSelect = document.getElementById("yScaleMode");
   const saveDataBtn = document.getElementById("saveData");
   const loadDataBtn = document.getElementById("loadData");
   const exportCsvBtn = document.getElementById("exportCsv");
@@ -177,7 +185,10 @@
     options: {
       animation: false,
       maintainAspectRatio: false,
-      scales: { x: { display: true }, y: { beginAtZero: true } }
+      scales: { 
+        x: { display: true }, 
+        y: { beginAtZero: true }
+      }
     }
   });
 
@@ -396,6 +407,17 @@
     chart.data.datasets[3].data = temps.slice(startIndex);
   }
 
+  function updateYScale() {
+    const mode = yScaleModeSelect.value;
+    const yAxis = chart.options.scales.y;
+    
+    if (mode === 'zero') {
+      yAxis.beginAtZero = true;
+    } else if (mode === 'minmax') {
+      yAxis.beginAtZero = false;
+    }
+  }
+
   function saveDataToLocalStorage() {
     const data = {
       labels,
@@ -512,6 +534,11 @@
 
   timeRangeSelect.addEventListener("change", () => {
     filterDataByTimeRange();
+    chart.update();
+  });
+
+  yScaleModeSelect.addEventListener("change", () => {
+    updateYScale();
     chart.update();
   });
 
