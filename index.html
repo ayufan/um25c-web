@@ -115,6 +115,7 @@
 
     <label class="connected hide">
       <select id="timeRange">
+        <option value="60">Last minute</option>
         <option value="300">Last 5 minutes</option>
         <option value="900">Last 15 minutes</option>
         <option value="3600" selected>Last 1 hour</option>
@@ -213,7 +214,7 @@
   };
 
   const INTERVAL = 1000;
-  const MAX_LABELS = 1000;
+  const MAX_LABELS = 10000;
 
   function matchesHeaderFooter(data, header, footer) {
     return (
@@ -361,8 +362,6 @@
       recMah.push(parsed.recMilliAmpHours);
       recMwh.push(parsed.recMilliWattHours);
       timestamps.push(now);
-
-      filterDataByTimeRange();
     } else {
       labels.length = 0;
       volts.length = 0;
@@ -373,44 +372,35 @@
       recMwh.length = 0;
       timestamps.length = 0;
     }
+
+    filterDataByTimeRange();
     chart.update();
   }
 
   function filterDataByTimeRange() {
+    chart.options.scales.x.min = 0;
+    chart.options.scales.x.max = labels.length;
+
     const timeRange = parseInt(timeRangeSelect.value);
     if (timeRange === 0) {
-      // Show all data
-      chart.data.labels = labels;
-      chart.data.datasets[0].data = volts;
-      chart.data.datasets[1].data = amps;
-      chart.data.datasets[2].data = watts;
-      chart.data.datasets[3].data = temps;
       return;
     }
 
     const cutoffTime = Date.now() - (timeRange * 1000);
 
     // Find the first index that should be included
-    let startIndex = 0;
     for (let i = 0; i < timestamps.length; i++) {
       if (timestamps[i] >= cutoffTime) {
-        startIndex = i;
+        chart.options.scales.x.min = i;
         break;
       }
     }
-
-    // Use array slices to show only the relevant time range
-    chart.data.labels = labels.slice(startIndex);
-    chart.data.datasets[0].data = volts.slice(startIndex);
-    chart.data.datasets[1].data = amps.slice(startIndex);
-    chart.data.datasets[2].data = watts.slice(startIndex);
-    chart.data.datasets[3].data = temps.slice(startIndex);
   }
 
   function updateYScale() {
     const mode = yScaleModeSelect.value;
     const yAxis = chart.options.scales.y;
-    
+
     if (mode === 'zero') {
       yAxis.beginAtZero = true;
     } else if (mode === 'minmax') {
