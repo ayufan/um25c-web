@@ -25,6 +25,9 @@
     <button id="disconnect" class="connected hide">Disconnect</button>
     <button id="toggleDetails" class="connected hide">Show Details</button>
     <button id="resetGraph" class="connected hide">Reset Graph</button>
+    <button id="saveData" class="connected hide">Save Data</button>
+    <button id="loadData" class="connected hide">Load Data</button>
+    <button id="exportCsv" class="connected hide">Export CSV</button>
 
     <button id="nextScreen" class="connected hide">Next Screen</button>
     <button id="prevScreen" class="connected hide" style="display: none">Prev Screen</button>
@@ -109,6 +112,15 @@
         <option value="300">Rec. &gt;= 300 mA</option>
       </select>
     </label>
+
+    <label class="connected hide">
+      <select id="timeRange">
+        <option value="300">Last 5 minutes</option>
+        <option value="900">Last 15 minutes</option>
+        <option value="3600" selected>Last 1 hour</option>
+        <option value="0">All data</option>
+      </select>
+    </label>
   </p>
 
   <div id="connectionStatus" class="status">Device: Disconnected</div>
@@ -139,9 +151,16 @@
   const timeoutSelect = document.getElementById("timeoutSelect");
   const groupSelect = document.getElementById("groupSelect");
   const recordingThreshold = document.getElementById("recordingThreshold");
+  const timeRangeSelect = document.getElementById("timeRange");
+  const saveDataBtn = document.getElementById("saveData");
+  const loadDataBtn = document.getElementById("loadData");
+  const exportCsvBtn = document.getElementById("exportCsv");
 
   let labels = [], volts = [], amps = [], watts = [], temps = [];
+  let recMah = [], recMwh = [];
+  let timestamps = [];
   let commandSend = false;
+  let lastDataReceived = 0;
 
   const ctx = document.getElementById("chart").getContext("2d");
   const chart = new Chart(ctx, {
@@ -312,26 +331,157 @@
 
   function updateChart(time, parsed) {
     if (parsed) {
+      const now = Date.now();
       if (labels.length > MAX_LABELS) {
         labels.shift();
         volts.shift();
         amps.shift();
         watts.shift();
         temps.shift();
+        recMah.shift();
+        recMwh.shift();
+        timestamps.shift();
       }
       labels.push(time);
       volts.push(parsed.volts);
       amps.push(parsed.amps);
       watts.push(parsed.watts);
       temps.push(parsed.tempC);
+      recMah.push(parsed.recMilliAmpHours);
+      recMwh.push(parsed.recMilliWattHours);
+      timestamps.push(now);
+
+      filterDataByTimeRange();
     } else {
       labels.length = 0;
       volts.length = 0;
       amps.length = 0;
       watts.length = 0;
       temps.length = 0;
+      recMah.length = 0;
+      recMwh.length = 0;
+      timestamps.length = 0;
     }
     chart.update();
+  }
+
+  function filterDataByTimeRange() {
+    const timeRange = parseInt(timeRangeSelect.value);
+    if (timeRange === 0) {
+      // Show all data
+      chart.data.labels = labels;
+      chart.data.datasets[0].data = volts;
+      chart.data.datasets[1].data = amps;
+      chart.data.datasets[2].data = watts;
+      chart.data.datasets[3].data = temps;
+      return;
+    }
+
+    const cutoffTime = Date.now() - (timeRange * 1000);
+
+    // Find the first index that should be included
+    let startIndex = 0;
+    for (let i = 0; i < timestamps.length; i++) {
+      if (timestamps[i] >= cutoffTime) {
+        startIndex = i;
+        break;
+      }
+    }
+
+    // Use array slices to show only the relevant time range
+    chart.data.labels = labels.slice(startIndex);
+    chart.data.datasets[0].data = volts.slice(startIndex);
+    chart.data.datasets[1].data = amps.slice(startIndex);
+    chart.data.datasets[2].data = watts.slice(startIndex);
+    chart.data.datasets[3].data = temps.slice(startIndex);
+  }
+
+  function saveDataToLocalStorage() {
+    const data = {
+      labels,
+      volts,
+      amps,
+      watts,
+      temps,
+      recMah,
+      recMwh,
+      timestamps,
+      savedAt: Date.now()
+    };
+    localStorage.setItem('um25c_data', JSON.stringify(data));
+    alert('Data saved to local storage');
+  }
+
+  function loadDataFromLocalStorage() {
+    const saved = localStorage.getItem('um25c_data');
+    if (!saved) {
+      alert('No saved data found');
+      return;
+    }
+
+    try {
+      const data = JSON.parse(saved);
+      labels.length = 0;
+      volts.length = 0;
+      amps.length = 0;
+      watts.length = 0;
+      temps.length = 0;
+      recMah.length = 0;
+      recMwh.length = 0;
+      timestamps.length = 0;
+
+      labels.push(...data.labels);
+      volts.push(...data.volts);
+      amps.push(...data.amps);
+      watts.push(...data.watts);
+      temps.push(...data.temps);
+      recMah.push(...(data.recMah || []));
+      recMwh.push(...(data.recMwh || []));
+      timestamps.push(...(data.timestamps || []));
+
+      filterDataByTimeRange();
+      chart.update();
+
+      const savedDate = new Date(data.savedAt).toLocaleString();
+      alert(`Data loaded from ${savedDate}`);
+    } catch (e) {
+      alert('Error loading data: ' + e.message);
+    }
+  }
+
+  function exportToCsv() {
+    if (labels.length === 0) {
+      alert('No data to export');
+      return;
+    }
+
+    const headers = ['Time', 'Voltage (V)', 'Current (A)', 'Power (W)', 'Temperature (°C)', 'Rec mAh', 'Rec mWh'];
+    const rows = [headers.join(',')];
+
+    for (let i = 0; i < labels.length; i++) {
+      const row = [
+        labels[i],
+        volts[i] || 0,
+        amps[i] || 0,
+        watts[i] || 0,
+        temps[i] || 0,
+        recMah[i] || 0,
+        recMwh[i] || 0
+      ];
+      rows.push(row.join(','));
+    }
+
+    const csvContent = rows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = `um25c_data_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
   }
 
   function updateConnectionStatus(connected, deviceName = "") {
@@ -359,6 +509,15 @@
   resetGraphBtn.addEventListener("click", () => {
     updateChart(null, false);
   });
+
+  timeRangeSelect.addEventListener("change", () => {
+    filterDataByTimeRange();
+    chart.update();
+  });
+
+  saveDataBtn.addEventListener("click", saveDataToLocalStorage);
+  loadDataBtn.addEventListener("click", loadDataFromLocalStorage);
+  exportCsvBtn.addEventListener("click", exportToCsv);
 
   brightnessSelect.addEventListener("change", () => {
     const brightness = parseInt(brightnessSelect.value, 10);
@@ -435,9 +594,13 @@
       updateConnectionStatus(true, "Serial");
 
       serialInterval = setInterval(() => {
+        const now = Date.now();
+        if (now - lastDataReceived < INTERVAL * 9 / 10) {
+          return;
+        }
         serialWriter.write(Uint8Array.of(0xf0));
         commandSend = false;
-      }, 500);
+      }, INTERVAL);
 
       while (true) {
         const { value, done } = await serialReader.read();
@@ -448,6 +611,7 @@
         try {
           const parsed = parseUM25CPacket(value.slice(0,130).buffer);
           const now = new Date().toLocaleTimeString();
+          lastDataReceived = Date.now();
           updateUI(parsed);
           updateChart(now, parsed);
         } catch (e) {
@@ -494,6 +658,7 @@
         try {
           const parsed = parseUM25CPacket(packetBuffer.slice(0,130).buffer);
           const now = new Date().toLocaleTimeString();
+          lastDataReceived = Date.now();
           updateUI(parsed);
           updateChart(now, parsed);
         } catch (e) {
@@ -511,6 +676,10 @@
       }
 
       bleInterval = setInterval(() => {
+        const now = Date.now();
+        if (now - lastDataReceived < INTERVAL * 9 / 10) {
+          return;
+        }
         bleCharacteristic.writeValue(Uint8Array.of(0xf0)).catch(() => {});
         commandSend = false;
       }, INTERVAL);
